@@ -1,17 +1,16 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Terminal } from "xterm";
 import "xterm/css/xterm.css";
 import { FitAddon } from "xterm-addon-fit";
 
 const TerminalComponent = () => {
+  const terminalRef = useRef<HTMLDivElement | null>(null);
+  const terminalInstance = useRef<Terminal | null>(null); // 터미널 인스턴스를 관리할 ref 추가
+
   useEffect(() => {
-    const terminalElement = document.getElementById("terminal");
+    if (terminalInstance.current) return; // 이미 터미널 인스턴스가 있으면 초기화하지 않음
 
-    if (!terminalElement) {
-      console.error("터미널 요소를 찾을 수 없습니다.");
-      return;
-    }
-
+    const terminalElement = terminalRef.current;
     const term = new Terminal({
       cursorBlink: true,
       fontSize: 14,
@@ -20,20 +19,24 @@ const TerminalComponent = () => {
         foreground: "#ffffff",
       },
     });
+
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
 
-    term.open(terminalElement);
-    fitAddon.fit();
+    // 안전하게 fit 호출
+    requestAnimationFrame(() => {
+      if (terminalElement) {
+        term.open(terminalElement);
+        fitAddon.fit();
+      } else {
+        console.warn("⚠️ 터미널 요소가 아직 준비되지 않았습니다.");
+      }
+    });
 
     const socket = new WebSocket("ws://localhost:8889");
 
     socket.onopen = () => {
       console.log("✅ WebSocket 연결 성공");
-    };
-
-    socket.onerror = (error) => {
-      console.error("❌ WebSocket 연결 오류", error);
     };
 
     socket.onclose = () => {
@@ -45,23 +48,15 @@ const TerminalComponent = () => {
     };
 
     term.onData((data) => {
-      socket.send(data);
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(data);
+      }
     });
 
-    const handleResize = () => {
-      fitAddon.fit();
-    };
-
-    window.addEventListener("resize", handleResize);
-
-    return () => {
-      window.removeEventListener("resize", handleResize);
-      socket.close();
-      term.dispose();
-    };
+    terminalInstance.current = term; // 터미널 인스턴스를 ref에 저장
   }, []);
 
-  return <div id="terminal" style={{ height: "400px", width: "100%" }} />;
+  return <div ref={terminalRef} style={{ height: "400px", width: "100%" }} />;
 };
 
 export default TerminalComponent;
