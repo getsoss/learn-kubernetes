@@ -3,7 +3,7 @@ const pty = require("node-pty");
 const os = require("os");
 
 // 플랫폼에 맞는 shell 지정
-const shell = os.platform() === "win32" ? "powershell.exe" : "zsh";
+const shell = os.platform() === "win32" ? "powershell.exe" : "/bin/bash";
 
 const wss = new WebSocket.Server({ port: 8889 });
 
