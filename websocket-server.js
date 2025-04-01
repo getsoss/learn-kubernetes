@@ -5,7 +5,7 @@ const os = require("os");
 // 플랫폼에 맞는 shell 지정
 const shell = os.platform() === "win32" ? "powershell.exe" : "zsh";
 
-const wss = new WebSocket.Server({ port: 8889 });
+const wss = new WebSocket.Server({ port: 8889, host: "0.0.0.0" });
 
 wss.on("connection", function connection(ws) {
   console.log("✅ 클라이언트가 연결되었습니다.");
