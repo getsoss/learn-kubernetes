@@ -15,7 +15,7 @@ const TerminalComponent = () => {
       cursorBlink: true,
       fontSize: 14,
       theme: {
-        background: "#2D5ADF",
+        background: "#282A35",
         foreground: "#ffffff",
       },
     });
