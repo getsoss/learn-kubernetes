@@ -5,17 +5,17 @@ import { FitAddon } from "xterm-addon-fit";
 
 const TerminalComponent = () => {
   const terminalRef = useRef<HTMLDivElement | null>(null);
-  const terminalInstance = useRef<Terminal | null>(null); // 터미널 인스턴스를 관리할 ref 추가
+  const terminalInstance = useRef<Terminal | null>(null);
 
   useEffect(() => {
-    if (terminalInstance.current) return; // 이미 터미널 인스턴스가 있으면 초기화하지 않음
+    if (terminalInstance.current) return;
 
     const terminalElement = terminalRef.current;
     const term = new Terminal({
       cursorBlink: true,
       fontSize: 14,
       theme: {
-        background: "#1e1e1e",
+        background: "#282A35",
         foreground: "#ffffff",
       },
     });
@@ -28,6 +28,19 @@ const TerminalComponent = () => {
       if (terminalElement) {
         term.open(terminalElement);
         fitAddon.fit();
+
+        // xterm viewport에 border-radius와 padding 적용
+        const viewport = terminalElement.querySelector(".xterm-viewport");
+        if (viewport) {
+          (viewport as HTMLElement).style.borderRadius = "15px";
+        }
+
+        const rendererOwner = terminalElement.querySelector(
+          ".xterm-dom-renderer-owner-1"
+        );
+        if (rendererOwner) {
+          (rendererOwner as HTMLElement).style.padding = "15px";
+        }
       } else {
         console.warn("⚠️ 터미널 요소가 아직 준비되지 않았습니다.");
       }
@@ -53,10 +66,19 @@ const TerminalComponent = () => {
       }
     });
 
-    terminalInstance.current = term; // 터미널 인스턴스를 ref에 저장
+    terminalInstance.current = term;
   }, []);
 
-  return <div ref={terminalRef} style={{ height: "400px", width: "100%" }} />;
+  return (
+    <div
+      ref={terminalRef}
+      style={{
+        borderRadius: "10px",
+        width: "30%",
+        height: "95%",
+      }}
+    />
+  );
 };
 
 export default TerminalComponent;
