@@ -46,8 +46,8 @@ const TerminalComponent = () => {
       }
     });
 
-    const socket = new WebSocket(`ws://${process.env.NEXT_PUBLIC_SOCKET_HOST}:8889`);
-    
+    const socket = new WebSocket(`ws://localhost:8889`);
+
     socket.onopen = () => {
       console.log("✅ WebSocket 연결 성공");
     };
