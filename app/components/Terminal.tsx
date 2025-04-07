@@ -1,11 +1,17 @@
-import { useEffect, useRef } from "react";
+"use client";
+
+import { useEffect, useRef, useState } from "react";
 import { Terminal } from "xterm";
 import "xterm/css/xterm.css";
 import { FitAddon } from "xterm-addon-fit";
+import { parseKubectlGetNodes, ParsedNode } from "../utils/parseKubectlOutput";
+import { ResourceVisualizer } from "./ResourceVisualizer";
 
 const TerminalComponent = () => {
   const terminalRef = useRef<HTMLDivElement | null>(null);
   const terminalInstance = useRef<Terminal | null>(null);
+  const [terminalOutput, setTerminalOutput] = useState("");
+  const [parsedNodes, setParsedNodes] = useState<ParsedNode[] | null>(null);
 
   useEffect(() => {
     if (terminalInstance.current) return;
@@ -23,13 +29,11 @@ const TerminalComponent = () => {
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
 
-    // 안전하게 fit 호출
     requestAnimationFrame(() => {
       if (terminalElement) {
         term.open(terminalElement);
         fitAddon.fit();
 
-        // xterm viewport에 border-radius와 padding 적용
         const viewport = terminalElement.querySelector(".xterm-viewport");
         if (viewport) {
           (viewport as HTMLElement).style.borderRadius = "15px";
@@ -58,6 +62,15 @@ const TerminalComponent = () => {
 
     socket.onmessage = (event) => {
       term.write(event.data);
+
+      setTerminalOutput((prev) => {
+        const updated = prev + event.data;
+        if (updated.includes("kubectl get nodes")) {
+          const parsed = parseKubectlGetNodes(updated);
+          setParsedNodes(parsed);
+        }
+        return updated;
+      });
     };
 
     term.onData((data) => {
@@ -70,14 +83,17 @@ const TerminalComponent = () => {
   }, []);
 
   return (
-    <div
-      ref={terminalRef}
-      style={{
-        borderRadius: "10px",
-        width: "30%",
-        height: "95%",
-      }}
-    />
+    <div className="flex h-full">
+      <div
+        ref={terminalRef}
+        style={{
+          borderRadius: "10px",
+          width: "50%",
+          height: "95%",
+        }}
+      />
+      <ResourceVisualizer nodes={parsedNodes} />
+    </div>
   );
 };
 
