@@ -4,12 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { Terminal } from "xterm";
 import "xterm/css/xterm.css";
 import { FitAddon } from "xterm-addon-fit";
-import {
-  parseKubectlGetNodes,
-  ParsedNode,
-} from "../utils/parseKubectlGetNodes";
-import { parseKubectlGetPods, ParsedPod } from "../utils/parseKubectlGetPods";
+import { parseKubectlGetNodes } from "../utils/parseKubectlGetNodes";
+import { parseKubectlGetPods } from "../utils/parseKubectlGetPods";
 import { ResourceVisualizer } from "./ResourceVisualizer";
+import { ParsedNode, ParsedPod } from "../types/kubectl";
 
 const TerminalComponent = () => {
   const terminalRef = useRef<HTMLDivElement | null>(null);

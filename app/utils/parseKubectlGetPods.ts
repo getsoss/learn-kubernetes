@@ -1,10 +1,4 @@
-export interface ParsedPod {
-  name: string;
-  ready: string;
-  status: string;
-  restarts: string;
-  age: string;
-}
+import { ParsedPod } from "../types/kubectl";
 
 export function parseKubectlGetPods(output: string): ParsedPod[] | null {
   // ANSI escape codes 제거

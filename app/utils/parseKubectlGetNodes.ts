@@ -1,10 +1,4 @@
-export interface ParsedNode {
-  name: string;
-  status: string;
-  roles: string;
-  age: string;
-  version: string;
-}
+import { ParsedNode } from "../types/kubectl";
 
 function stripAnsi(str: string): string {
   // ANSI escape sequences 제거
