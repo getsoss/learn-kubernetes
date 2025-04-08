@@ -4,7 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { Terminal } from "xterm";
 import "xterm/css/xterm.css";
 import { FitAddon } from "xterm-addon-fit";
-import { parseKubectlGetNodes, ParsedNode } from "../utils/parseKubectlOutput";
+import {
+  parseKubectlGetNodes,
+  ParsedNode,
+} from "../utils/parseKubectlGetNodes";
+import { parseKubectlGetPods, ParsedPod } from "../utils/parseKubectlGetPods";
 import { ResourceVisualizer } from "./ResourceVisualizer";
 
 const TerminalComponent = () => {
@@ -12,6 +16,7 @@ const TerminalComponent = () => {
   const terminalInstance = useRef<Terminal | null>(null);
   const [terminalOutput, setTerminalOutput] = useState("");
   const [parsedNodes, setParsedNodes] = useState<ParsedNode[] | null>(null);
+  const [parsedPods, setParsedPods] = useState<ParsedPod[] | null>(null);
 
   useEffect(() => {
     if (terminalInstance.current) return;
@@ -65,10 +70,17 @@ const TerminalComponent = () => {
 
       setTerminalOutput((prev) => {
         const updated = prev + event.data;
+
         if (updated.includes("kubectl get nodes")) {
           const parsed = parseKubectlGetNodes(updated);
           setParsedNodes(parsed);
         }
+
+        if (updated.includes("kubectl get pods")) {
+          const parsed = parseKubectlGetPods(updated);
+          setParsedPods(parsed);
+        }
+
         return updated;
       });
     };
@@ -92,7 +104,7 @@ const TerminalComponent = () => {
           height: "95%",
         }}
       />
-      <ResourceVisualizer nodes={parsedNodes} />
+      <ResourceVisualizer nodes={parsedNodes} pods={parsedPods} />
     </div>
   );
 };
