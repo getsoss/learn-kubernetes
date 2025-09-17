@@ -1,26 +1,72 @@
 import { ParsedPod } from "../types/kubectl";
 
+function stripAnsi(str: string): string {
+  // ANSI escape sequences 제거
+  return str.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, "");
+}
+
 export function parseKubectlGetPods(output: string): ParsedPod[] | null {
-  // ANSI escape codes 제거
-  const cleanOutput = output.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, "");
+  try {
+    // ANSI 코드 제거
+    const cleanOutput = stripAnsi(output);
 
-  const lines = cleanOutput.trim().split("\n");
+    const lines = cleanOutput
+      .trim()
+      .split("\n")
+      .map((line) => line.trim());
 
-  const headerIndex = lines.findIndex(
-    (line) =>
-      line.includes("NAME") && line.includes("READY") && line.includes("STATUS")
-  );
+    const headerIndex = lines.findIndex(
+      (line) =>
+        line.includes("NAME") &&
+        line.includes("READY") &&
+        line.includes("STATUS")
+    );
 
-  if (headerIndex === -1) return null;
+    if (headerIndex === -1) {
+      console.log("파드 헤더를 찾을 수 없습니다:", cleanOutput);
+      return null;
+    }
 
-  // 헤더 이후부터 유효한 pod 줄만 파싱
-  const dataLines = lines.slice(headerIndex + 1).filter(
-    (line) =>
-      line.trim() !== "" && /^[a-z0-9.-]+\s+\d+\/\d+\s+\w+/i.test(line.trim()) // 이름 + ready + status가 제대로 있는 줄
-  );
+    const dataLines: string[] = [];
 
-  return dataLines.map((line) => {
-    const [name, ready, status, restarts, age] = line.trim().split(/\s+/);
-    return { name, ready, status, restarts, age };
-  });
+    for (let i = headerIndex + 1; i < lines.length; i++) {
+      const line = lines[i];
+      // 빈 줄이거나 프롬프트가 시작되면 중단
+      if (
+        !line ||
+        line.startsWith("%") ||
+        line.includes("~ %") ||
+        line.includes("$")
+      )
+        break;
+
+      // 실제 파드 데이터인지 확인 (최소 3개 컬럼이 있어야 함)
+      const parts = line.split(/\s+/);
+      if (parts.length >= 3) {
+        dataLines.push(line);
+      }
+    }
+
+    if (dataLines.length === 0) {
+      console.log("파싱할 파드 데이터가 없습니다");
+      return null;
+    }
+
+    const parsed = dataLines.map((line) => {
+      const parts = line.trim().split(/\s+/);
+      return {
+        name: parts[0] || "",
+        ready: parts[1] || "",
+        status: parts[2] || "",
+        restarts: parts[3] || "",
+        age: parts[4] || "",
+      };
+    });
+
+    console.log("파싱된 파드 데이터:", parsed);
+    return parsed;
+  } catch (error) {
+    console.error("파드 파싱 오류:", error);
+    return null;
+  }
 }
