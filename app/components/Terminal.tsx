@@ -13,7 +13,8 @@ import { fetchK8sNodes, fetchK8sPods } from "../utils/k8sApi";
 const TerminalComponent = () => {
   const terminalRef = useRef<HTMLDivElement | null>(null);
   const terminalInstance = useRef<Terminal | null>(null);
-  const [terminalOutput, setTerminalOutput] = useState("");
+  // terminalOutput은 setTerminalOutput의 콜백에서 prev로 사용됨
+  const [, setTerminalOutput] = useState("");
   const [parsedNodes, setParsedNodes] = useState<ParsedNode[] | null>(null);
   const [parsedPods, setParsedPods] = useState<ParsedPod[] | null>(null);
   const [isTerminalReady, setIsTerminalReady] = useState(false);
@@ -100,25 +101,47 @@ const TerminalComponent = () => {
       window.addEventListener("load", initTerminal);
     }
 
-    const socket = new WebSocket(`ws://localhost:8889`);
+    // 로컬 프록시 서버를 통해 연결 (헤더 지원)
+    const PROXY_WS_URL =
+      typeof window !== "undefined"
+        ? `ws://${
+            window.location.hostname
+          }:8889/proxy?target=${encodeURIComponent(
+            WS_URL
+          )}&token=${encodeURIComponent(ACCESS_TOKEN)}`
+        : WS_URL;
+
+    const socket = new WebSocket(PROXY_WS_URL);
+    socket.binaryType = "arraybuffer";
 
     socket.onopen = () => {
-      console.log("✅ WebSocket 연결 성공");
+      console.log("✅ 서버 터미널 연결 성공");
       setConnectionStatus("connected");
       // 연결 성공 후 터미널 크기 재조정
       setTimeout(() => fitAddon.fit(), 200);
+      // 연결 성공 메시지 표시
+      term.writeln("\r\n✅ 서버 터미널 연결 성공");
+      term.writeln("이제 명령어를 입력하세요 (예: ls, pwd, whoami)\r\n");
       // API를 통해 초기 데이터 로드
       refreshResourceData();
     };
 
-    socket.onclose = () => {
-      console.log("🔌 WebSocket 연결 종료");
+    socket.onclose = (event) => {
+      console.log(
+        `🔌 연결 종료 (code: ${event.code}, reason: ${event.reason || "없음"})`
+      );
       setConnectionStatus("disconnected");
+      if (term) {
+        term.writeln(`\r\n❌ 연결 종료 (code: ${event.code})`);
+      }
     };
 
     socket.onerror = (error) => {
-      console.error("WebSocket 오류:", error);
+      console.error("⚠️ WebSocket 오류:", error);
       setConnectionStatus("disconnected");
+      if (term) {
+        term.writeln("\r\n⚠️ 연결 오류가 발생했습니다.");
+      }
     };
 
     socket.onmessage = (event) => {
@@ -193,9 +216,14 @@ const TerminalComponent = () => {
       }
     };
 
+    // 사용자 입력 처리 - Enter 키를 누르면 줄바꿈 포함하여 전송
     term.onData((data) => {
       if (socket.readyState === WebSocket.OPEN) {
+        // Enter 키(CR 또는 LF)가 포함되어 있지 않으면 추가하지 않음
+        // xterm.js는 Enter 키를 누르면 자동으로 \r 또는 \n을 포함해서 보내줌
         socket.send(data);
+      } else {
+        term.writeln("\r\n❌ 연결이 닫혔습니다.");
       }
     });
 
