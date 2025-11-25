@@ -101,9 +101,18 @@ const TerminalComponent = () => {
       window.addEventListener("load", initTerminal);
     }
 
-    const WS_URL =
-      "ws://43.203.84.169:8080/session/0548b436?token=eyJhbGciOiJIUzI1NiIsImtpZCI6IklHUWtMQUU2YitQL1labGMiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL3FxbGx6d3pxZGVha3Zld2lpZ2R1LnN1cGFiYXNlLmNvL2F1dGgvdjEiLCJzdWIiOiI3NGRiYjVjZi0xODVhLTQ4YzQtOTExNS01NTgyNmFlMGYxMzAiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzYyOTMyODg0LCJpYXQiOjE3NjI5MjkyODQsImVtYWlsIjoiZ2V0c29zczg0QGdtYWlsLmNvbSIsInBob25lIjoiIiwiYXBwX21ldGFkYXRhIjp7InByb3ZpZGVyIjoiZ29vZ2xlIiwicHJvdmlkZXJzIjpbImdvb2dsZSJdfSwidXNlcl9tZXRhZGF0YSI6eyJhdmF0YXJfdXJsIjoiaHR0cHM6Ly9saDMuZ29vZ2xldXNlcmNvbnRlbnQuY29tL2EvQUNnOG9jSTlJcEVORWxicjJJakZNU0hUemVGTHNOeHRpSFA2TTBDTkl4bUtvZXQtRVN3aERRPXM5Ni1jIiwiZW1haWwiOiJnZXRzb3NzODRAZ21haWwuY29tIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsImZ1bGxfbmFtZSI6IuyerOyXsCIsImlzcyI6Imh0dHBzOi8vYWNjb3VudHMuZ29vZ2xlLmNvbSIsIm5hbWUiOiLsnqzsl7AiLCJwaG9uZV92ZXJpZmllZCI6ZmFsc2UsInBpY3R1cmUiOiJodHRwczovL2xoMy5nb29nbGV1c2VyY29udGVudC5jb20vYS9BQ2c4b2NJOUlwRU5FbGJyMklqRk1TSFR6ZUZMc054dGlIUDZNMENOSXhtS29ldC1FU3doRFE9czk2LWMiLCJwcm92aWRlcl9pZCI6IjExNTg2NTcwMTY1Mjc1OTE1ODUxMCIsInN1YiI6IjExNTg2NTcwMTY1Mjc1OTE1ODUxMCJ9LCJyb2xlIjoiYXV0aGVudGljYXRlZCIsImFhbCI6ImFhbDEiLCJhbXIiOlt7Im1ldGhvZCI6Im9hdXRoIiwidGltZXN0YW1wIjoxNzYyOTI5Mjg0fV0sInNlc3Npb25faWQiOiIxMDhjYzhhZS1mZjk2LTQ5ZDktYWQ5Ny04ZWY4MDZiMTIyNjkiLCJpc19hbm9ueW1vdXMiOmZhbHNlfQ.CuxyJpkPJWerGVDrDXg8VtD4sdoNuusPXp4rExKqUP0";
-    const ACCESS_TOKEN = WS_URL.split("token=")[1];
+    // ==== WebSocket URL 구성 ====
+    const WS_IP = process.env.NEXT_PUBLIC_WS_IP;
+    const SESSION_ID = process.env.NEXT_PUBLIC_SESSION_ID;
+
+    const ACCESS_TOKEN =
+      process.env.NEXT_PUBLIC_ACCESS_TOKEN ||
+      (typeof window !== "undefined"
+        ? localStorage.getItem("access_token")
+        : "");
+
+    // 최종 WebSocket URL
+    const WS_URL = `ws://${WS_IP}/session/${SESSION_ID}/${ACCESS_TOKEN}`;
 
     // 로컬 프록시 서버를 통해 연결 (헤더 지원)
     const PROXY_WS_URL =
@@ -111,9 +120,9 @@ const TerminalComponent = () => {
         ? `ws://${
             window.location.hostname
           }:8889/proxy?target=${encodeURIComponent(
-            WS_URL
-          )}&token=${encodeURIComponent(ACCESS_TOKEN)}`
-        : WS_URL;
+            WS_URL ?? ""
+          )}&token=${encodeURIComponent(ACCESS_TOKEN ?? "")}`
+        : WS_URL ?? "";
 
     const socket = new WebSocket(PROXY_WS_URL);
     // 텍스트 기반 터미널 통신이므로 binaryType은 기본값(blob) 사용
