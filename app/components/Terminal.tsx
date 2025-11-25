@@ -101,27 +101,45 @@ const TerminalComponent = () => {
       window.addEventListener("load", initTerminal);
     }
 
+    // ==== WebSocket URL 구성 ====
+    const WS_IP = process.env.NEXT_PUBLIC_WS_IP;
+    const SESSION_ID = process.env.NEXT_PUBLIC_SESSION_ID;
+
+    const ACCESS_TOKEN =
+      process.env.NEXT_PUBLIC_ACCESS_TOKEN ||
+      (typeof window !== "undefined"
+        ? localStorage.getItem("access_token")
+        : "");
+
+    // 최종 WebSocket URL
+    const WS_URL = `ws://${WS_IP}/session/${SESSION_ID}/${ACCESS_TOKEN}`;
+
     // 로컬 프록시 서버를 통해 연결 (헤더 지원)
     const PROXY_WS_URL =
       typeof window !== "undefined"
         ? `ws://${
             window.location.hostname
           }:8889/proxy?target=${encodeURIComponent(
-            WS_URL
-          )}&token=${encodeURIComponent(ACCESS_TOKEN)}`
-        : WS_URL;
+            WS_URL ?? ""
+          )}&token=${encodeURIComponent(ACCESS_TOKEN ?? "")}`
+        : WS_URL ?? "";
 
     const socket = new WebSocket(PROXY_WS_URL);
-    socket.binaryType = "arraybuffer";
+    // 텍스트 기반 터미널 통신이므로 binaryType은 기본값(blob) 사용
 
     socket.onopen = () => {
       console.log("✅ 서버 터미널 연결 성공");
       setConnectionStatus("connected");
+
       // 연결 성공 후 터미널 크기 재조정
-      setTimeout(() => fitAddon.fit(), 200);
-      // 연결 성공 메시지 표시
-      term.writeln("\r\n✅ 서버 터미널 연결 성공");
-      term.writeln("이제 명령어를 입력하세요 (예: ls, pwd, whoami)\r\n");
+      setTimeout(() => {
+        fitAddon.fit();
+      }, 200);
+
+      // 서버가 보낸 초기 메시지(프롬프트)를 기다림
+      // 연결 성공 메시지는 터미널에 표시하지 않고 콘솔에만 출력
+      // 서버가 자동으로 프롬프트를 보내거나, 사용자가 명령어를 입력하면 서버가 응답함
+
       // API를 통해 초기 데이터 로드
       refreshResourceData();
     };
@@ -146,73 +164,98 @@ const TerminalComponent = () => {
 
     socket.onmessage = (event) => {
       try {
-        term.write(event.data);
+        // 데이터 타입에 따라 처리
+        let data: string;
+        if (typeof event.data === "string") {
+          data = event.data;
+        } else if (event.data instanceof ArrayBuffer) {
+          // ArrayBuffer를 문자열로 변환
+          const decoder = new TextDecoder();
+          data = decoder.decode(event.data);
+        } else if (event.data instanceof Blob) {
+          // Blob을 텍스트로 읽기 (비동기)
+          event.data.text().then((text) => {
+            console.log("서버 메시지 (Blob):", text.substring(0, 100)); // 디버깅용
+            term.write(text);
+            setTerminalOutput((prev) => {
+              const updated = prev + text;
+              processKubectlOutput(updated);
+              return updated;
+            });
+          });
+          return;
+        } else {
+          data = String(event.data);
+        }
+
+        // 디버깅: 서버에서 받은 메시지 로그 (처음 100자만)
+        if (data.length > 0) {
+          console.log(
+            "서버 메시지:",
+            data.substring(0, 100).replace(/\n/g, "\\n")
+          );
+        }
+
+        // 터미널에 데이터 출력 (서버가 보낸 모든 메시지를 그대로 표시)
+        term.write(data);
 
         setTerminalOutput((prev) => {
-          const updated = prev + event.data;
-
-          // kubectl get nodes 명령어 파싱 개선
-          if (
-            updated.includes("kubectl get nodes") &&
-            updated.includes("NAME")
-          ) {
-            const lines = updated.split("\n");
-            const nodeStartIndex = lines.findIndex(
-              (line) => line.includes("NAME") && line.includes("STATUS")
-            );
-            if (nodeStartIndex !== -1) {
-              const nodeLines = lines
-                .slice(nodeStartIndex + 1)
-                .filter(
-                  (line) =>
-                    line.trim() &&
-                    !line.includes("kubectl") &&
-                    !line.includes("$")
-                );
-              if (nodeLines.length > 0) {
-                const parsed = parseKubectlGetNodes(nodeLines.join("\n"));
-                if (parsed && parsed.length > 0) {
-                  setParsedNodes(parsed);
-                }
-              }
-            }
-            // API를 통해서도 데이터 새로고침
-            setTimeout(() => refreshResourceData(), 1000);
-          }
-
-          // kubectl get pods 명령어 파싱 개선
-          if (
-            updated.includes("kubectl get pods") &&
-            updated.includes("NAME")
-          ) {
-            const lines = updated.split("\n");
-            const podStartIndex = lines.findIndex(
-              (line) => line.includes("NAME") && line.includes("READY")
-            );
-            if (podStartIndex !== -1) {
-              const podLines = lines
-                .slice(podStartIndex + 1)
-                .filter(
-                  (line) =>
-                    line.trim() &&
-                    !line.includes("kubectl") &&
-                    !line.includes("$")
-                );
-              if (podLines.length > 0) {
-                const parsed = parseKubectlGetPods(podLines.join("\n"));
-                if (parsed && parsed.length > 0) {
-                  setParsedPods(parsed);
-                }
-              }
-            }
-            // API를 통해서도 데이터 새로고침
-            setTimeout(() => refreshResourceData(), 1000);
-          }
+          const updated = prev + data;
+          processKubectlOutput(updated);
 
           return updated;
         });
       } catch (error) {
         console.error("터미널 메시지 처리 오류:", error);
+      }
+    };
+
+    // kubectl 출력 파싱 헬퍼 함수
+    const processKubectlOutput = (output: string) => {
+      // kubectl get nodes 명령어 파싱
+      if (output.includes("kubectl get nodes") && output.includes("NAME")) {
+        const lines = output.split("\n");
+        const nodeStartIndex = lines.findIndex(
+          (line) => line.includes("NAME") && line.includes("STATUS")
+        );
+        if (nodeStartIndex !== -1) {
+          const nodeLines = lines
+            .slice(nodeStartIndex + 1)
+            .filter(
+              (line) =>
+                line.trim() && !line.includes("kubectl") && !line.includes("$")
+            );
+          if (nodeLines.length > 0) {
+            const parsed = parseKubectlGetNodes(nodeLines.join("\n"));
+            if (parsed && parsed.length > 0) {
+              setParsedNodes(parsed);
+            }
+          }
+        }
+        setTimeout(() => refreshResourceData(), 1000);
+      }
+
+      // kubectl get pods 명령어 파싱
+      if (output.includes("kubectl get pods") && output.includes("NAME")) {
+        const lines = output.split("\n");
+        const podStartIndex = lines.findIndex(
+          (line) => line.includes("NAME") && line.includes("READY")
+        );
+        if (podStartIndex !== -1) {
+          const podLines = lines
+            .slice(podStartIndex + 1)
+            .filter(
+              (line) =>
+                line.trim() && !line.includes("kubectl") && !line.includes("$")
+            );
+          if (podLines.length > 0) {
+            const parsed = parseKubectlGetPods(podLines.join("\n"));
+            if (parsed && parsed.length > 0) {
+              setParsedPods(parsed);
+            }
+          }
+        }
+        setTimeout(() => refreshResourceData(), 1000);
       }
     };
 
