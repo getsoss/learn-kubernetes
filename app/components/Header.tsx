@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 
 // 아이콘 컴포넌트들
 const TerminalIcon = () => (
@@ -95,11 +95,24 @@ const getPageInfo = (pathname: string) => {
 
 export default function Header() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const pageInfo = getPageInfo(pathname);
   const isTerminal = pathname === "/terminal" || pathname === "/";
 
+  // URL 파라미터에서 session_id와 access_token 가져오기
+  const sessionId = searchParams.get("session_id");
+  const accessToken = searchParams.get("access_token");
+
+  // 터미널 링크에 파라미터 추가
+  const getTerminalHref = () => {
+    if (sessionId && accessToken) {
+      return `/terminal?session_id=${sessionId}&access_token=${accessToken}`;
+    }
+    return "/terminal";
+  };
+
   const navItems = [
-    { href: "/terminal", label: "터미널", icon: TerminalIcon },
+    { href: getTerminalHref(), label: "터미널", icon: TerminalIcon },
     { href: "/practice", label: "실습하기", icon: RocketIcon },
     { href: "/help", label: "도움말", icon: HelpCircleIcon },
   ];

@@ -9,6 +9,12 @@ import { parseKubectlGetPods } from "../utils/parseKubectlGetPods";
 import { ResourceVisualizer } from "./ResourceVisualizer";
 import { ParsedNode, ParsedPod } from "../types/kubectl";
 import { fetchK8sNodes, fetchK8sPods } from "../utils/k8sApi";
+import { problems, Problem } from "../data/problems";
+import { groupProblemsByChapter } from "../utils/groupProblemsByChapter";
+import {
+  saveProblemResult,
+  getUserProblemResults,
+} from "../lib/problemResults";
 
 const TerminalComponent = () => {
   const terminalRef = useRef<HTMLDivElement | null>(null);
@@ -21,6 +27,93 @@ const TerminalComponent = () => {
   const [connectionStatus, setConnectionStatus] = useState<
     "connecting" | "connected" | "disconnected"
   >("connecting");
+  const [problemResults, setProblemResults] = useState<
+    Record<string, { isCorrect: boolean; message: string } | null>
+  >({});
+  const [expandedChapters, setExpandedChapters] = useState<Set<string>>(
+    new Set()
+  );
+  const [isProblemPanelOpen, setIsProblemPanelOpen] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  // 문제를 챕터별로 그룹화
+  const chapterGroups = groupProblemsByChapter(problems);
+
+  // 유저 ID 가져오기 (URL 파라미터 또는 로컬 스토리지)
+  useEffect(() => {
+    const getUserId = () => {
+      // 1. URL 파라미터에서 가져오기
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlUserId = urlParams.get("user_id");
+      if (urlUserId) {
+        setUserId(urlUserId);
+        localStorage.setItem("user_id", urlUserId);
+        return urlUserId;
+      }
+
+      // 2. 로컬 스토리지에서 가져오기
+      const storedUserId = localStorage.getItem("user_id");
+      if (storedUserId) {
+        setUserId(storedUserId);
+        return storedUserId;
+      }
+
+      // 3. 새 UUID 생성
+      const newUserId = crypto.randomUUID();
+      setUserId(newUserId);
+      localStorage.setItem("user_id", newUserId);
+      return newUserId;
+    };
+
+    const userId = getUserId();
+    if (userId) {
+      loadProblemResults(userId);
+    }
+  }, []);
+
+  // DB에서 문제 결과 로드
+  const loadProblemResults = async (userId: string) => {
+    try {
+      const results = await getUserProblemResults(userId);
+      setProblemResults(results);
+    } catch (error) {
+      console.error("문제 결과 로드 실패:", error);
+    }
+  };
+
+  // 스텝별 완료 상태 계산
+  const getStepCompletionStatus = (
+    chapterId: string,
+    stepProblems: Problem[]
+  ): {
+    isCompleted: boolean;
+    completedCount: number;
+    totalCount: number;
+  } => {
+    const completedProblems = stepProblems.filter(
+      (p) => problemResults[p.id]?.isCorrect === true
+    );
+    return {
+      isCompleted:
+        stepProblems.length > 0 &&
+        completedProblems.length === stepProblems.length,
+      completedCount: completedProblems.length,
+      totalCount: stepProblems.length,
+    };
+  };
+
+  // 챕터 접기/펼치기 토글 함수
+  const toggleChapter = (chapterId: string) => {
+    setExpandedChapters((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(chapterId)) {
+        newSet.delete(chapterId);
+      } else {
+        newSet.add(chapterId);
+      }
+      return newSet;
+    });
+  };
 
   // API를 통해 데이터를 가져오는 함수
   const refreshResourceData = async () => {
@@ -101,35 +194,66 @@ const TerminalComponent = () => {
       window.addEventListener("load", initTerminal);
     }
 
-    const WS_IP = process.env.NEXT_PUBLIC_WS_IP;
-    const SESSION_ID = process.env.NEXT_PUBLIC_SESSION_ID;
-
-    // URL에서 토큰 가져오기
+    // URL에서 파라미터 가져오기
     const urlParams = new URLSearchParams(window.location.search);
-    const ACCESS_TOKEN = urlParams.get("access_token");
+    let SESSION_ID = urlParams.get("session_id");
+    let ACCESS_TOKEN = urlParams.get("access_token");
 
-    if (!WS_IP || !SESSION_ID || !ACCESS_TOKEN) {
-      console.error("❌ WS 연결에 필요한 정보가 없습니다.");
-      setConnectionStatus("disconnected");
-      return;
+    // URL 파라미터가 없으면 localStorage에서 가져오고 URL 업데이트
+    if (!SESSION_ID || !ACCESS_TOKEN) {
+      const storedSessionId = localStorage.getItem("session_id");
+      const storedAccessToken = localStorage.getItem("access_token");
+
+      if (storedSessionId && storedAccessToken) {
+        SESSION_ID = storedSessionId;
+        ACCESS_TOKEN = storedAccessToken;
+
+        // URL 업데이트 (히스토리 추가하지 않고 교체)
+        const newUrl = new URL(window.location.href);
+        newUrl.searchParams.set("session_id", storedSessionId);
+        newUrl.searchParams.set("access_token", storedAccessToken);
+        window.history.replaceState({}, "", newUrl.toString());
+      }
+    } else {
+      // URL에 파라미터가 있으면 localStorage에 저장
+      localStorage.setItem("session_id", SESSION_ID);
+      localStorage.setItem("access_token", ACCESS_TOKEN);
     }
 
-    console.log(ACCESS_TOKEN);
+    const WS_IP = process.env.NEXT_PUBLIC_WS_IP; // WS_IP는 환경변수에서 가져오거나 URL에서도 받을 수 있도록 유지
 
-    // 최종 WS URL
-    const WS_URL = `ws://${WS_IP}/session/${SESSION_ID}?token=${ACCESS_TOKEN}`;
+    let socket: WebSocket;
 
-    // 로컬 프록시 서버를 통해 연결
-    const PROXY_WS_URL =
-      typeof window !== "undefined"
-        ? `ws://${
-            window.location.hostname
-          }:8889/proxy?target=${encodeURIComponent(
-            WS_URL
-          )}&token=${encodeURIComponent(ACCESS_TOKEN)}`
-        : WS_URL;
+    // IP와 세션 ID가 없으면 localhost:8889로 직접 연결
+    if (!WS_IP || !SESSION_ID) {
+      console.log("🔗 IP와 세션 ID가 없어 localhost:8889로 직접 연결합니다.");
+      const LOCAL_WS_URL = "ws://localhost:8889";
+      socket = new WebSocket(LOCAL_WS_URL);
+    } else {
+      // IP와 세션 ID가 있으면 기존 로직 사용
+      if (!ACCESS_TOKEN) {
+        console.error("❌ WS 연결에 필요한 토큰이 없습니다.");
+        setConnectionStatus("disconnected");
+        return;
+      }
 
-    const socket = new WebSocket(PROXY_WS_URL);
+      console.log(ACCESS_TOKEN);
+
+      // 최종 WS URL
+      const WS_URL = `ws://${WS_IP}/session/${SESSION_ID}?token=${ACCESS_TOKEN}`;
+
+      // 로컬 프록시 서버를 통해 연결
+      const PROXY_WS_URL =
+        typeof window !== "undefined"
+          ? `ws://${
+              window.location.hostname
+            }:8889/proxy?target=${encodeURIComponent(
+              WS_URL
+            )}&token=${encodeURIComponent(ACCESS_TOKEN)}`
+          : WS_URL;
+
+      socket = new WebSocket(PROXY_WS_URL);
+    }
 
     // 텍스트 기반 터미널 통신이므로 binaryType은 기본값(blob) 사용
 
@@ -295,8 +419,207 @@ const TerminalComponent = () => {
     };
   }, []);
 
+  const handleCheckAnswer = async (problemId: string) => {
+    const problem = problems.find((p) => p.id === problemId);
+    if (!problem) return;
+
+    const result = problem.checkAnswer(parsedNodes, parsedPods);
+
+    // 로컬 상태 업데이트
+    setProblemResults((prev) => ({
+      ...prev,
+      [problemId]: result,
+    }));
+
+    // DB에 저장 (유저 ID가 있는 경우)
+    if (userId) {
+      try {
+        await saveProblemResult(
+          userId,
+          problemId,
+          result.isCorrect,
+          result.message
+        );
+      } catch (error) {
+        console.error("문제 결과 저장 실패:", error);
+        // 저장 실패해도 UI는 업데이트됨
+      }
+    }
+  };
+
   return (
-    <div className="flex h-full p-6 gap-6 overflow-hidden">
+    <div className="flex h-full p-6 gap-6 overflow-hidden relative">
+      {/* 문제 목록 영역 (왼쪽) */}
+      {isProblemPanelOpen && (
+        <div className="w-80 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col transition-all duration-300">
+          <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900">문제 목록</h2>
+            <button
+              onClick={() => setIsProblemPanelOpen(false)}
+              className="p-1.5 hover:bg-gray-200 rounded transition-colors"
+              title="문제 목록 닫기"
+            >
+              <svg
+                className="w-5 h-5 text-gray-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 19l-7-7 7-7"
+                />
+              </svg>
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4">
+            <div className="space-y-2">
+              {chapterGroups.map((chapter) => {
+                const isExpanded = expandedChapters.has(chapter.chapterId);
+                const stepStatus = getStepCompletionStatus(
+                  chapter.chapterId,
+                  chapter.problems
+                );
+                const isStepCompleted = stepStatus.isCompleted;
+
+                return (
+                  <div
+                    key={chapter.chapterId}
+                    className={`border rounded-lg overflow-hidden transition-colors ${
+                      isStepCompleted
+                        ? "border-green-300 bg-green-50"
+                        : "border-gray-200 bg-white"
+                    }`}
+                  >
+                    {/* 챕터 헤더 (클릭 가능) */}
+                    <button
+                      onClick={() => toggleChapter(chapter.chapterId)}
+                      className={`w-full px-4 py-3 transition-colors flex items-center justify-between text-left ${
+                        isStepCompleted
+                          ? "bg-green-100 hover:bg-green-200"
+                          : "bg-gray-50 hover:bg-gray-100"
+                      }`}
+                    >
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <h3
+                            className={`text-sm font-semibold ${
+                              isStepCompleted
+                                ? "text-green-900"
+                                : "text-gray-900"
+                            }`}
+                          >
+                            {chapter.chapterName}
+                          </h3>
+                          {isStepCompleted && (
+                            <span
+                              className="text-green-600 font-bold"
+                              title="스텝 완료"
+                            >
+                              ✓
+                            </span>
+                          )}
+                        </div>
+                        <p
+                          className={`text-xs mt-0.5 ${
+                            isStepCompleted ? "text-green-700" : "text-gray-500"
+                          }`}
+                        >
+                          {chapter.problems.length}개 문제
+                          <span className="ml-1">
+                            ({stepStatus.completedCount}/{stepStatus.totalCount}{" "}
+                            완료)
+                          </span>
+                        </p>
+                      </div>
+                      <svg
+                        className={`w-5 h-5 text-gray-500 transition-transform ${
+                          isExpanded ? "transform rotate-180" : ""
+                        }`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 9l-7 7-7-7"
+                        />
+                      </svg>
+                    </button>
+
+                    {/* 챕터 내용 (접기/펼치기) */}
+                    {isExpanded && (
+                      <div className="p-3 space-y-3 border-t border-gray-200">
+                        {chapter.problems.map((problem) => {
+                          const result = problemResults[problem.id];
+                          return (
+                            <div
+                              key={problem.id}
+                              className="border border-gray-200 rounded-lg p-3 bg-gray-50"
+                            >
+                              <p className="text-sm text-gray-700 mb-2">
+                                {problem.text}
+                              </p>
+                              <button
+                                onClick={() => handleCheckAnswer(problem.id)}
+                                className="w-full px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
+                              >
+                                정답 확인
+                              </button>
+                              {result && (
+                                <div
+                                  className={`mt-2 p-2 rounded text-xs ${
+                                    result.isCorrect
+                                      ? "bg-green-50 text-green-800 border border-green-200"
+                                      : "bg-red-50 text-red-800 border border-red-200"
+                                  }`}
+                                >
+                                  <div className="font-semibold mb-1">
+                                    {result.isCorrect ? "✓ 정답" : "✗ 오답"}
+                                  </div>
+                                  <div>{result.message}</div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 문제 목록 열기 버튼 (접혔을 때만 표시) */}
+      {!isProblemPanelOpen && (
+        <button
+          onClick={() => setIsProblemPanelOpen(true)}
+          className="absolute left-6 top-1/2 -translate-y-1/2 z-10 bg-white rounded-r-lg shadow-md border border-gray-200 border-l-0 px-3 py-4 hover:bg-gray-50 transition-colors"
+          title="문제 목록 열기"
+        >
+          <svg
+            className="w-5 h-5 text-gray-600"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M9 5l7 7-7 7"
+            />
+          </svg>
+        </button>
+      )}
+
       {/* 터미널 영역 */}
       <div className="flex-1 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden relative">
         <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
