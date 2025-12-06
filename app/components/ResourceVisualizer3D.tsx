@@ -44,7 +44,7 @@ function NodeMesh({
     }
   });
 
-  const color = node.status === "Ready" ? "#10b981" : "#ef4444";
+  const color = node.status === "Ready" ? "#3b82f6" : "#ef4444"; // bg-blue-500
 
   return (
     <group position={position}>
@@ -54,7 +54,13 @@ function NodeMesh({
         onPointerOver={() => setHovered(true)}
         onPointerOut={() => setHovered(false)}
       >
-        <meshStandardMaterial color={color} />
+        <meshStandardMaterial
+          color={color}
+          emissive={color}
+          emissiveIntensity={0.5}
+          metalness={0}
+          roughness={1}
+        />
       </Box>
       <Text
         position={[0, -1, 0]}
@@ -98,15 +104,10 @@ function PodMesh({
   });
 
   const getColor = () => {
-    switch (pod.status) {
-      case "Running":
-        return "#10b981";
-      case "Pending":
-        return "#f59e0b";
-      default:
-        return "#ef4444";
-    }
+    return "#22c55e"; // bg-green-500
   };
+
+  const color = getColor();
 
   return (
     <group position={position}>
@@ -116,7 +117,13 @@ function PodMesh({
         onPointerOver={() => setHovered(true)}
         onPointerOut={() => setHovered(false)}
       >
-        <meshStandardMaterial color={getColor()} />
+        <meshStandardMaterial
+          color={color}
+          emissive={color}
+          emissiveIntensity={0.5}
+          metalness={0}
+          roughness={1}
+        />
       </Sphere>
       <Text
         position={[0, -0.8, 0]}
@@ -148,7 +155,7 @@ function ConnectionLines({
   nodes: ParsedNode[];
   pods: ParsedPod[];
 }) {
-  const lines = [];
+  const lines: JSX.Element[] = [];
 
   // Create connections between nodes and pods
   nodes.forEach((node, nodeIndex) => {
@@ -164,9 +171,19 @@ function ConnectionLines({
       const geometry = new THREE.BufferGeometry().setFromPoints(points);
 
       lines.push(
-        <line key={`${nodeIndex}-${podIndex}`} geometry={geometry}>
-          <lineBasicMaterial color="#e5e7eb" opacity={0.3} transparent />
-        </line>
+        <primitive
+          key={`${nodeIndex}-${podIndex}`}
+          object={
+            new THREE.Line(
+              geometry,
+              new THREE.LineBasicMaterial({
+                color: "#000000",
+                opacity: 0.3,
+                transparent: true,
+              })
+            )
+          }
+        />
       );
     });
   });
