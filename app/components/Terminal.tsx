@@ -18,6 +18,7 @@ import {
 const TerminalComponent = () => {
   const terminalRef = useRef<HTMLDivElement | null>(null);
   const terminalInstance = useRef<Terminal | null>(null);
+  const fitAddonRef = useRef<FitAddon | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const terminalOutputRef = useRef<string>(""); // 터미널 출력을 ref로 저장
   const parseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -168,6 +169,7 @@ const TerminalComponent = () => {
 
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
+    fitAddonRef.current = fitAddon;
 
     // 터미널 초기화를 위한 지연
     const initTerminal = () => {
@@ -566,6 +568,31 @@ const TerminalComponent = () => {
     };
   }, []);
 
+  // 문제 패널 열림/닫힘 시 터미널 크기 재조정
+  useEffect(() => {
+    if (fitAddonRef.current && isTerminalReady && terminalRef.current) {
+      // ResizeObserver를 사용하여 컨테이너 크기 변경 감지
+      const resizeObserver = new ResizeObserver(() => {
+        // 크기 변경 후 약간의 지연을 두고 fit 호출
+        setTimeout(() => {
+          fitAddonRef.current?.fit();
+        }, 100);
+      });
+
+      resizeObserver.observe(terminalRef.current);
+
+      // 레이아웃 변경이 완료된 후에도 한 번 더 확인
+      const timer = setTimeout(() => {
+        fitAddonRef.current?.fit();
+      }, 350); // transition duration(300ms) + 여유 시간
+
+      return () => {
+        resizeObserver.disconnect();
+        clearTimeout(timer);
+      };
+    }
+  }, [isProblemPanelOpen, isTerminalReady]);
+
   const handleCheckAnswer = async (problemId: string) => {
     const problem = problems.find((p) => p.id === problemId);
     if (!problem) return;
@@ -597,152 +624,162 @@ const TerminalComponent = () => {
   return (
     <div className="flex h-full pl-6 pr-0 pt-6 pb-6 gap-6 overflow-hidden relative">
       {/* 문제 목록 영역 (왼쪽) */}
-      {isProblemPanelOpen && (
-        <div className="flex-[2] bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col transition-all duration-300">
-          <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">문제 목록</h2>
-            <button
-              onClick={() => setIsProblemPanelOpen(false)}
-              className="p-1.5 hover:bg-gray-200 rounded transition-colors"
-              title="문제 목록 닫기"
-            >
-              <svg
-                className="w-5 h-5 text-gray-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+      <div
+        className={`${
+          isProblemPanelOpen ? "flex-[1.8]" : "flex-[0]"
+        } bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col transition-all duration-300 ${
+          !isProblemPanelOpen ? "min-w-0" : ""
+        }`}
+      >
+        {isProblemPanelOpen && (
+          <>
+            <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">문제 목록</h2>
+              <button
+                onClick={() => setIsProblemPanelOpen(false)}
+                className="p-1.5 hover:bg-gray-200 rounded transition-colors"
+                title="문제 목록 닫기"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15 19l-7-7 7-7"
-                />
-              </svg>
-            </button>
-          </div>
-          <div className="flex-1 overflow-y-auto p-4">
-            <div className="space-y-2">
-              {chapterGroups.map((chapter) => {
-                const isExpanded = expandedChapters.has(chapter.chapterId);
-                const stepStatus = getStepCompletionStatus(
-                  chapter.chapterId,
-                  chapter.problems
-                );
-                const isStepCompleted = stepStatus.isCompleted;
+                <svg
+                  className="w-5 h-5 text-gray-600"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 19l-7-7 7-7"
+                  />
+                </svg>
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              <div className="space-y-2">
+                {chapterGroups.map((chapter) => {
+                  const isExpanded = expandedChapters.has(chapter.chapterId);
+                  const stepStatus = getStepCompletionStatus(
+                    chapter.chapterId,
+                    chapter.problems
+                  );
+                  const isStepCompleted = stepStatus.isCompleted;
 
-                return (
-                  <div
-                    key={chapter.chapterId}
-                    className={`border rounded-lg overflow-hidden transition-colors ${
-                      isStepCompleted
-                        ? "border-green-300 bg-green-50"
-                        : "border-gray-200 bg-white"
-                    }`}
-                  >
-                    {/* 챕터 헤더 (클릭 가능) */}
-                    <button
-                      onClick={() => toggleChapter(chapter.chapterId)}
-                      className={`w-full px-4 py-3 transition-colors flex items-center justify-between text-left ${
+                  return (
+                    <div
+                      key={chapter.chapterId}
+                      className={`border rounded-lg overflow-hidden transition-colors ${
                         isStepCompleted
-                          ? "bg-green-100 hover:bg-green-200"
-                          : "bg-gray-50 hover:bg-gray-100"
+                          ? "border-green-300 bg-green-50"
+                          : "border-gray-200 bg-white"
                       }`}
                     >
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <h3
-                            className={`text-sm font-semibold ${
+                      {/* 챕터 헤더 (클릭 가능) */}
+                      <button
+                        onClick={() => toggleChapter(chapter.chapterId)}
+                        className={`w-full px-4 py-3 transition-colors flex items-center justify-between text-left ${
+                          isStepCompleted
+                            ? "bg-green-100 hover:bg-green-200"
+                            : "bg-gray-50 hover:bg-gray-100"
+                        }`}
+                      >
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <h3
+                              className={`text-sm font-semibold ${
+                                isStepCompleted
+                                  ? "text-green-900"
+                                  : "text-gray-900"
+                              }`}
+                            >
+                              {chapter.chapterName}
+                            </h3>
+                            {isStepCompleted && (
+                              <span
+                                className="text-green-600 font-bold"
+                                title="스텝 완료"
+                              >
+                                ✓
+                              </span>
+                            )}
+                          </div>
+                          <p
+                            className={`text-xs mt-0.5 ${
                               isStepCompleted
-                                ? "text-green-900"
-                                : "text-gray-900"
+                                ? "text-green-700"
+                                : "text-gray-500"
                             }`}
                           >
-                            {chapter.chapterName}
-                          </h3>
-                          {isStepCompleted && (
-                            <span
-                              className="text-green-600 font-bold"
-                              title="스텝 완료"
-                            >
-                              ✓
+                            {chapter.problems.length}개 문제
+                            <span className="ml-1">
+                              ({stepStatus.completedCount}/
+                              {stepStatus.totalCount} 완료)
                             </span>
-                          )}
+                          </p>
                         </div>
-                        <p
-                          className={`text-xs mt-0.5 ${
-                            isStepCompleted ? "text-green-700" : "text-gray-500"
+                        <svg
+                          className={`w-5 h-5 text-gray-500 transition-transform ${
+                            isExpanded ? "transform rotate-180" : ""
                           }`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
                         >
-                          {chapter.problems.length}개 문제
-                          <span className="ml-1">
-                            ({stepStatus.completedCount}/{stepStatus.totalCount}{" "}
-                            완료)
-                          </span>
-                        </p>
-                      </div>
-                      <svg
-                        className={`w-5 h-5 text-gray-500 transition-transform ${
-                          isExpanded ? "transform rotate-180" : ""
-                        }`}
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M19 9l-7 7-7-7"
-                        />
-                      </svg>
-                    </button>
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 9l-7 7-7-7"
+                          />
+                        </svg>
+                      </button>
 
-                    {/* 챕터 내용 (접기/펼치기) */}
-                    {isExpanded && (
-                      <div className="p-3 space-y-3 border-t border-gray-200">
-                        {chapter.problems.map((problem) => {
-                          const result = problemResults[problem.id];
-                          return (
-                            <div
-                              key={problem.id}
-                              className="border border-gray-200 rounded-lg p-3 bg-gray-50"
-                            >
-                              <p className="text-sm text-gray-700 mb-2">
-                                {problem.text}
-                              </p>
-                              <button
-                                onClick={() => handleCheckAnswer(problem.id)}
-                                className="w-full px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
+                      {/* 챕터 내용 (접기/펼치기) */}
+                      {isExpanded && (
+                        <div className="p-3 space-y-3 border-t border-gray-200">
+                          {chapter.problems.map((problem) => {
+                            const result = problemResults[problem.id];
+                            return (
+                              <div
+                                key={problem.id}
+                                className="border border-gray-200 rounded-lg p-3 bg-gray-50"
                               >
-                                정답 확인
-                              </button>
-                              {result && (
-                                <div
-                                  className={`mt-2 p-2 rounded text-xs ${
-                                    result.isCorrect
-                                      ? "bg-green-50 text-green-800 border border-green-200"
-                                      : "bg-red-50 text-red-800 border border-red-200"
-                                  }`}
+                                <p className="text-sm text-gray-700 mb-2">
+                                  {problem.text}
+                                </p>
+                                <button
+                                  onClick={() => handleCheckAnswer(problem.id)}
+                                  className="w-full px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
                                 >
-                                  <div className="font-semibold mb-1">
-                                    {result.isCorrect ? "✓ 정답" : "✗ 오답"}
+                                  정답 확인
+                                </button>
+                                {result && (
+                                  <div
+                                    className={`mt-2 p-2 rounded text-xs ${
+                                      result.isCorrect
+                                        ? "bg-green-50 text-green-800 border border-green-200"
+                                        : "bg-red-50 text-red-800 border border-red-200"
+                                    }`}
+                                  >
+                                    <div className="font-semibold mb-1">
+                                      {result.isCorrect ? "✓ 정답" : "✗ 오답"}
+                                    </div>
+                                    <div>{result.message}</div>
                                   </div>
-                                  <div>{result.message}</div>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </div>
 
       {/* 문제 목록 열기 버튼 (접혔을 때만 표시) */}
       {!isProblemPanelOpen && (
@@ -768,7 +805,7 @@ const TerminalComponent = () => {
       )}
 
       {/* 터미널 영역 */}
-      <div className="flex-[1.5] bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden relative">
+      <div className="flex-[1.8] bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden relative">
         <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
           <div className="flex items-center justify-between">
             <div className="flex items-center">
