@@ -165,9 +165,9 @@ function NodeMesh({
         />
       </Box>
 
-      {/* 노드 라벨 */}
+      {/* 노드 라벨 (노드 위) */}
       <Text
-        position={[0, -1.5, 0]}
+        position={[0, 1.3, 0]}
         fontSize={0.25}
         color={K8S_COLORS.text}
         anchorX="center"
@@ -181,7 +181,7 @@ function NodeMesh({
       {/* 역할 라벨 */}
       {isMaster && (
         <Text
-          position={[0, -1.8, 0]}
+          position={[0, 1.0, 0]}
           fontSize={0.18}
           color={K8S_COLORS.master}
           anchorX="center"
@@ -254,9 +254,6 @@ function PodMesh({
         Math.sin(state.clock.elapsedTime * 1.5 + podIndex) * 0.1;
       meshRef.current.position.y = position[1] + floatOffset;
 
-      // 회전 애니메이션
-      meshRef.current.rotation.y = state.clock.elapsedTime * 0.5 + podIndex;
-
       // 호버 시 확대
       const targetScale = hovered ? 1.3 : 1;
       meshRef.current.scale.lerp(
@@ -273,11 +270,11 @@ function PodMesh({
     }
   });
 
-  // 파드 위치 계산 (노드 주변에 원형 배치)
-  const angle = (podIndex / totalPodsInNode) * Math.PI * 2;
-  const radius = 0.8;
-  const podX = Math.cos(angle) * radius;
-  const podZ = Math.sin(angle) * radius;
+  // 파드 위치 계산 (노드 아래 가로선으로 1자 배치)
+  const spacing = 1.2; // 파드 간 간격
+  const startOffset = -((totalPodsInNode - 1) * spacing) / 2; // 중앙 정렬을 위한 시작 오프셋
+  const podX = startOffset + podIndex * spacing;
+  const podZ = 0; // Z축은 0으로 고정하여 가로선 유지
 
   return (
     <group
@@ -321,20 +318,18 @@ function PodMesh({
         </mesh>
       )}
 
-      {/* 파드 라벨 */}
-      {hovered && (
-        <Text
-          position={[0, -0.6, 0]}
-          fontSize={0.15}
-          color={K8S_COLORS.text}
-          anchorX="center"
-          anchorY="middle"
-          outlineWidth={0.01}
-          outlineColor={K8S_COLORS.background}
-        >
-          {pod.name.length > 12 ? pod.name.substring(0, 9) + "..." : pod.name}
-        </Text>
-      )}
+      {/* 파드 라벨 (파드 구체 아래) */}
+      <Text
+        position={[0, -0.6, 0]}
+        fontSize={0.16}
+        color={K8S_COLORS.text}
+        anchorX="center"
+        anchorY="middle"
+        outlineWidth={0.015}
+        outlineColor={K8S_COLORS.background}
+      >
+        {pod.name.length > 12 ? pod.name.substring(0, 9) + "..." : pod.name}
+      </Text>
 
       {/* 호버 시 상세 정보 */}
       {hovered && (
@@ -383,10 +378,11 @@ function ConnectionLines({
     const nodePos = nodePositions[nodeIndex];
 
     assignedPods.forEach((pod, podIndex) => {
-      const angle = (podIndex / assignedPods.length) * Math.PI * 2;
-      const radius = 0.8;
-      const podX = Math.cos(angle) * radius;
-      const podZ = Math.sin(angle) * radius;
+      // 가로선 배치 계산
+      const spacing = 1.2; // 파드 간 간격
+      const startOffset = -((assignedPods.length - 1) * spacing) / 2; // 중앙 정렬을 위한 시작 오프셋
+      const podX = startOffset + podIndex * spacing;
+      const podZ = 0; // Z축은 0으로 고정하여 가로선 유지
 
       const podPos = new THREE.Vector3(
         nodePos.x + podX,
@@ -410,9 +406,9 @@ function ConnectionLines({
               geometry,
               new THREE.LineBasicMaterial({
                 color: K8S_COLORS.primaryLight,
-                opacity: 0.4,
+                opacity: 0.7,
                 transparent: true,
-                linewidth: 2,
+                linewidth: 3,
               })
             )
           }
