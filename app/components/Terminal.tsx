@@ -44,8 +44,16 @@ const TerminalComponent = () => {
   // 유저 ID 가져오기 (URL 파라미터 또는 로컬 스토리지)
   useEffect(() => {
     const getUserId = () => {
-      // 1. URL 파라미터에서 가져오기
+      // 1. URL 파라미터에서 uuid 가져오기 (우선순위 1)
       const urlParams = new URLSearchParams(window.location.search);
+      const urlUuid = urlParams.get("uuid");
+      if (urlUuid) {
+        setUserId(urlUuid);
+        localStorage.setItem("user_id", urlUuid);
+        return urlUuid;
+      }
+
+      // 2. URL 파라미터에서 user_id 가져오기 (하위 호환성)
       const urlUserId = urlParams.get("user_id");
       if (urlUserId) {
         setUserId(urlUserId);
@@ -53,14 +61,14 @@ const TerminalComponent = () => {
         return urlUserId;
       }
 
-      // 2. 로컬 스토리지에서 가져오기
+      // 3. 로컬 스토리지에서 가져오기
       const storedUserId = localStorage.getItem("user_id");
       if (storedUserId) {
         setUserId(storedUserId);
         return storedUserId;
       }
 
-      // 3. 새 UUID 생성
+      // 4. 새 UUID 생성
       const newUserId = crypto.randomUUID();
       setUserId(newUserId);
       localStorage.setItem("user_id", newUserId);

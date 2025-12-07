@@ -1,4 +1,4 @@
-import { supabase, UserProblemResult } from './supabase';
+import { supabase, UserProblemResult } from "./supabase";
 
 /**
  * 유저의 문제 풀이 결과를 저장합니다 (최신 결과만 유지)
@@ -11,7 +11,7 @@ export async function saveProblemResult(
 ): Promise<UserProblemResult | null> {
   try {
     const { data, error } = await supabase
-      .from('user_problem_results')
+      .from("user_problem_results")
       .upsert(
         {
           user_id: userId,
@@ -20,20 +20,20 @@ export async function saveProblemResult(
           message: message || null,
         },
         {
-          onConflict: 'user_id,problem_id',
+          onConflict: "user_id,problem_id",
         }
       )
       .select()
       .single();
 
     if (error) {
-      console.error('문제 결과 저장 실패:', error);
+      console.error("문제 결과 저장 실패:", error);
       return null;
     }
 
     return data;
   } catch (error) {
-    console.error('문제 결과 저장 중 오류:', error);
+    console.error("문제 결과 저장 중 오류:", error);
     return null;
   }
 }
@@ -46,30 +46,33 @@ export async function getUserProblemResults(
 ): Promise<Record<string, { isCorrect: boolean; message: string } | null>> {
   try {
     const { data, error } = await supabase
-      .from('user_problem_results')
-      .select('problem_id, is_correct, message')
-      .eq('user_id', userId);
+      .from("user_problem_results")
+      .select("problem_id, is_correct, message")
+      .eq("user_id", userId);
 
     if (error) {
-      console.error('문제 결과 조회 실패:', error);
+      console.error("문제 결과 조회 실패:", error);
       return {};
     }
 
     // Record 형태로 변환
-    const results: Record<string, { isCorrect: boolean; message: string } | null> = {};
-    
+    const results: Record<
+      string,
+      { isCorrect: boolean; message: string } | null
+    > = {};
+
     if (data) {
       data.forEach((result) => {
         results[result.problem_id] = {
           isCorrect: result.is_correct,
-          message: result.message || '',
+          message: result.message || "",
         };
       });
     }
 
     return results;
   } catch (error) {
-    console.error('문제 결과 조회 중 오류:', error);
+    console.error("문제 결과 조회 중 오류:", error);
     return {};
   }
 }
@@ -83,10 +86,10 @@ export async function getProblemResult(
 ): Promise<{ isCorrect: boolean; message: string } | null> {
   try {
     const { data, error } = await supabase
-      .from('user_problem_results')
-      .select('is_correct, message')
-      .eq('user_id', userId)
-      .eq('problem_id', problemId)
+      .from("user_problem_results")
+      .select("is_correct, message")
+      .eq("user_id", userId)
+      .eq("problem_id", problemId)
       .single();
 
     if (error || !data) {
@@ -95,10 +98,10 @@ export async function getProblemResult(
 
     return {
       isCorrect: data.is_correct,
-      message: data.message || '',
+      message: data.message || "",
     };
   } catch (error) {
-    console.error('문제 결과 조회 중 오류:', error);
+    console.error("문제 결과 조회 중 오류:", error);
     return null;
   }
 }
@@ -116,14 +119,14 @@ export async function getStepCompletionStatus(
 }> {
   try {
     const { data, error } = await supabase
-      .from('user_problem_results')
-      .select('problem_id, is_correct')
-      .eq('user_id', userId)
-      .in('problem_id', stepProblemIds)
-      .eq('is_correct', true);
+      .from("user_problem_results")
+      .select("problem_id, is_correct")
+      .eq("user_id", userId)
+      .in("problem_id", stepProblemIds)
+      .eq("is_correct", true);
 
     if (error) {
-      console.error('스텝 완료 상태 조회 실패:', error);
+      console.error("스텝 완료 상태 조회 실패:", error);
       return {
         isCompleted: false,
         completedCount: 0,
@@ -140,7 +143,7 @@ export async function getStepCompletionStatus(
       totalCount,
     };
   } catch (error) {
-    console.error('스텝 완료 상태 조회 중 오류:', error);
+    console.error("스텝 완료 상태 조회 중 오류:", error);
     return {
       isCompleted: false,
       completedCount: 0,
@@ -162,5 +165,3 @@ export async function getTrackCompletionStatus(
 }> {
   return getStepCompletionStatus(userId, trackProblemIds);
 }
-
-

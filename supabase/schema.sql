@@ -3,7 +3,7 @@
 
 -- 문제 풀이 결과 테이블
 CREATE TABLE IF NOT EXISTS user_problem_results (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  id BIGSERIAL PRIMARY KEY,
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   problem_id TEXT NOT NULL,
   is_correct BOOLEAN NOT NULL DEFAULT false,
@@ -55,33 +55,5 @@ CREATE POLICY "Users can update their own problem results"
   ON user_problem_results
   FOR UPDATE
   USING (auth.uid() = user_id)
-  WITH CHECK (auth.uid() = user_id);
-
--- 선택사항: 모든 시도 기록을 저장하려면 아래 테이블 사용
--- (위의 UNIQUE 제약을 제거하고 이 테이블 사용)
-CREATE TABLE IF NOT EXISTS user_problem_attempts (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  problem_id TEXT NOT NULL,
-  is_correct BOOLEAN NOT NULL DEFAULT false,
-  message TEXT,
-  attempted_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_user_problem_attempts_user_id ON user_problem_attempts(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_problem_attempts_problem_id ON user_problem_attempts(problem_id);
--- 복합 인덱스 (user_id와 problem_id를 함께 조회할 때 성능 향상)
-CREATE INDEX IF NOT EXISTS idx_user_problem_attempts_user_problem ON user_problem_attempts(user_id, problem_id);
-
-ALTER TABLE user_problem_attempts ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can view their own problem attempts"
-  ON user_problem_attempts
-  FOR SELECT
-  USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert their own problem attempts"
-  ON user_problem_attempts
-  FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 

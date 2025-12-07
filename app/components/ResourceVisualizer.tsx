@@ -104,7 +104,11 @@ export const ResourceVisualizer: React.FC<ResourceVisualizerProps> = ({
       </div>
       {is3DView ? (
         <div className="flex-1">
-          <ResourceVisualizer3D nodes={nodes} pods={pods} />
+          <ResourceVisualizer3D
+            key={`3d-${nodes?.length || 0}-${pods?.length || 0}`}
+            nodes={nodes}
+            pods={pods}
+          />
         </div>
       ) : (
         <div className="p-4 flex-1 overflow-auto space-y-6">
