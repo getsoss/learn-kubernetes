@@ -282,7 +282,7 @@ export const ResourceVisualizer3D: React.FC<ResourceVisualizer3DProps> = ({
         }
       >
         <Canvas
-          camera={{ position: [8, 8, 8], fov: 50 }}
+          camera={{ position: [-2, 0, 16], fov: 50 }}
           style={{
             background: "linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)",
           }}
@@ -361,6 +361,8 @@ export const ResourceVisualizer3D: React.FC<ResourceVisualizer3DProps> = ({
             enableRotate={true}
             minDistance={5}
             maxDistance={20}
+            target={[0, 0, 0]}
+            makeDefault
           />
         </Canvas>
 

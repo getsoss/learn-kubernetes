@@ -595,10 +595,10 @@ const TerminalComponent = () => {
   };
 
   return (
-    <div className="flex h-full p-6 gap-6 overflow-hidden relative">
+    <div className="flex h-full pl-6 pr-0 pt-6 pb-6 gap-6 overflow-hidden relative">
       {/* 문제 목록 영역 (왼쪽) */}
       {isProblemPanelOpen && (
-        <div className="w-80 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col transition-all duration-300">
+        <div className="flex-[2] bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col transition-all duration-300">
           <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex items-center justify-between">
             <h2 className="text-lg font-semibold text-gray-900">문제 목록</h2>
             <button
@@ -768,7 +768,7 @@ const TerminalComponent = () => {
       )}
 
       {/* 터미널 영역 */}
-      <div className="flex-1 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden relative">
+      <div className="flex-[1.5] bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden relative">
         <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
           <div className="flex items-center justify-between">
             <div className="flex items-center">
@@ -819,7 +819,7 @@ const TerminalComponent = () => {
       </div>
 
       {/* 리소스 시각화 영역 */}
-      <div className="w-96">
+      <div className="flex-[2] pr-6">
         <ResourceVisualizer
           nodes={parsedNodes}
           pods={parsedPods}

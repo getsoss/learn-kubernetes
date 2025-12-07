@@ -16,7 +16,7 @@ export default function Track1Step2Page() {
     <div className="flex flex-col h-screen bg-gray-50 overflow-hidden">
       <Header />
       <main className="flex-1 overflow-auto px-6 py-6">
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-5xl mx-auto">
           <TrackStepper trackId="track-1" steps={steps} currentStep={2} />
 
           <h1 className="text-2xl font-bold text-gray-900 mb-2">
