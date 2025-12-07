@@ -8,7 +8,14 @@ import { parseKubectlGetNodes } from "../utils/parseKubectlGetNodes";
 import { parseKubectlGetPods } from "../utils/parseKubectlGetPods";
 import { ResourceVisualizer } from "./ResourceVisualizer";
 import { ParsedNode, ParsedPod } from "../types/kubectl";
-import { problems, Problem } from "../data/problems";
+import {
+  problems,
+  Problem,
+  ProblemSubmission,
+  ProblemResult,
+  ProblemOption,
+  ProblemContext,
+} from "../data/problems";
 import { groupProblemsByChapter } from "../utils/groupProblemsByChapter";
 import {
   saveProblemResult,
@@ -31,7 +38,10 @@ const TerminalComponent = () => {
     "connecting" | "connected" | "disconnected"
   >("connecting");
   const [problemResults, setProblemResults] = useState<
-    Record<string, { isCorrect: boolean; message: string } | null>
+    Record<string, ProblemResult | null>
+  >({});
+  const [problemSubmissions, setProblemSubmissions] = useState<
+    Record<string, ProblemSubmission>
   >({});
   const [expandedChapters, setExpandedChapters] = useState<Set<string>>(
     new Set()
@@ -593,11 +603,78 @@ const TerminalComponent = () => {
     }
   }, [isProblemPanelOpen, isTerminalReady]);
 
+  const getProblemOptions = (problem: Problem): ProblemOption[] => {
+    if (problem.options) return problem.options;
+    if (problem.generateOptions) {
+      return problem.generateOptions({
+        nodes: parsedNodes,
+        pods: parsedPods,
+      });
+    }
+    return [];
+  };
+
+  const updateSubmission = (
+    problemId: string,
+    submission: ProblemSubmission
+  ) => {
+    setProblemSubmissions((prev) => ({
+      ...prev,
+      [problemId]: {
+        ...prev[problemId],
+        ...submission,
+      },
+    }));
+  };
+
+  const context: ProblemContext = {
+    nodes: parsedNodes,
+    pods: parsedPods,
+  };
+
   const handleCheckAnswer = async (problemId: string) => {
     const problem = problems.find((p) => p.id === problemId);
     if (!problem) return;
 
-    const result = problem.checkAnswer(parsedNodes, parsedPods);
+    const submission = problemSubmissions[problemId];
+
+    if (problem.type === "multiple-choice") {
+      const options = getProblemOptions(problem);
+      if (!options.length) {
+        setProblemResults((prev) => ({
+          ...prev,
+          [problemId]: {
+            isCorrect: false,
+            message: "보기가 아직 준비되지 않았습니다.",
+          },
+        }));
+        return;
+      }
+
+      if (!submission?.selectedOptionId) {
+        setProblemResults((prev) => ({
+          ...prev,
+          [problemId]: {
+            isCorrect: false,
+            message: "보기를 선택한 뒤 정답 확인을 눌러주세요.",
+          },
+        }));
+        return;
+      }
+    }
+
+    if (problem.type === "text-input" && !submission?.textAnswer) {
+      setProblemResults((prev) => ({
+        ...prev,
+        [problemId]: {
+          isCorrect: false,
+          message: "정답을 입력한 뒤 확인을 눌러주세요.",
+        },
+      }));
+      return;
+    }
+
+    const result = problem.checkAnswer(context, submission);
 
     // 로컬 상태 업데이트
     setProblemResults((prev) => ({
@@ -739,6 +816,9 @@ const TerminalComponent = () => {
                         <div className="p-3 space-y-3 border-t border-gray-200">
                           {chapter.problems.map((problem) => {
                             const result = problemResults[problem.id];
+                            const submission =
+                              problemSubmissions[problem.id] || {};
+                            const options = getProblemOptions(problem);
                             return (
                               <div
                                 key={problem.id}
@@ -747,6 +827,48 @@ const TerminalComponent = () => {
                                 <p className="text-sm text-gray-700 mb-2">
                                   {problem.text}
                                 </p>
+                                {problem.type === "multiple-choice" && (
+                                  <div className="space-y-2 mb-2">
+                                    {options.map((option) => (
+                                      <label
+                                        key={option.id}
+                                        className="flex items-center space-x-2 text-sm text-gray-700"
+                                      >
+                                        <input
+                                          type="radio"
+                                          name={`${problem.id}-options`}
+                                          value={option.id}
+                                          checked={
+                                            submission.selectedOptionId ===
+                                            option.id
+                                          }
+                                          onChange={() =>
+                                            updateSubmission(problem.id, {
+                                              selectedOptionId: option.id,
+                                            })
+                                          }
+                                          className="text-blue-600 focus:ring-blue-500"
+                                        />
+                                        <span>{option.label}</span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                )}
+                                {problem.type === "text-input" && (
+                                  <input
+                                    type="text"
+                                    value={submission.textAnswer || ""}
+                                    placeholder={
+                                      problem.placeholder || "정답을 입력하세요"
+                                    }
+                                    onChange={(e) =>
+                                      updateSubmission(problem.id, {
+                                        textAnswer: e.target.value,
+                                      })
+                                    }
+                                    className="w-full mb-2 px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  />
+                                )}
                                 <button
                                   onClick={() => handleCheckAnswer(problem.id)}
                                   className="w-full px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
