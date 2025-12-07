@@ -105,3 +105,4 @@ const { data: { user } } = await supabase.auth.getUser();
 - 인덱스가 자동으로 생성되어 빠른 조회가 가능합니다.
 - `user_id`와 `problem_id`로 필터링할 때 인덱스를 사용합니다.
 
+

@@ -8,7 +8,6 @@ import { parseKubectlGetNodes } from "../utils/parseKubectlGetNodes";
 import { parseKubectlGetPods } from "../utils/parseKubectlGetPods";
 import { ResourceVisualizer } from "./ResourceVisualizer";
 import { ParsedNode, ParsedPod } from "../types/kubectl";
-import { fetchK8sNodes, fetchK8sPods } from "../utils/k8sApi";
 import { problems, Problem } from "../data/problems";
 import { groupProblemsByChapter } from "../utils/groupProblemsByChapter";
 import {
@@ -19,6 +18,9 @@ import {
 const TerminalComponent = () => {
   const terminalRef = useRef<HTMLDivElement | null>(null);
   const terminalInstance = useRef<Terminal | null>(null);
+  const socketRef = useRef<WebSocket | null>(null);
+  const terminalOutputRef = useRef<string>(""); // 터미널 출력을 ref로 저장
+  const parseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   // terminalOutput은 setTerminalOutput의 콜백에서 prev로 사용됨
   const [, setTerminalOutput] = useState("");
   const [parsedNodes, setParsedNodes] = useState<ParsedNode[] | null>(null);
@@ -115,24 +117,25 @@ const TerminalComponent = () => {
     });
   };
 
-  // API를 통해 데이터를 가져오는 함수
-  const refreshResourceData = async () => {
-    try {
-      const [nodesData, podsData] = await Promise.all([
-        fetchK8sNodes(),
-        fetchK8sPods(),
-      ]);
-
-      if (nodesData.length > 0) {
-        setParsedNodes(nodesData);
-      }
-
-      if (podsData.length > 0) {
-        setParsedPods(podsData);
-      }
-    } catch (error) {
-      console.error("리소스 데이터 새로고침 실패:", error);
+  // WebSocket을 통해 kubectl 명령어를 실행하여 리소스 데이터를 새로고침하는 함수
+  const refreshResourceData = () => {
+    const socket = socketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      console.warn(
+        "⚠️ WebSocket이 연결되지 않아 리소스를 새로고침할 수 없습니다."
+      );
+      return;
     }
+
+    console.log("🔄 리소스 데이터 새로고침 중...");
+    // kubectl get nodes 실행
+    socket.send("kubectl get nodes\n");
+    // 잠시 후 kubectl get pods 실행
+    setTimeout(() => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send("kubectl get pods\n");
+      }
+    }, 500);
   };
 
   useEffect(() => {
@@ -255,6 +258,9 @@ const TerminalComponent = () => {
       socket = new WebSocket(PROXY_WS_URL);
     }
 
+    // socket 참조 저장 (refreshResourceData에서 사용)
+    socketRef.current = socket;
+
     // 텍스트 기반 터미널 통신이므로 binaryType은 기본값(blob) 사용
 
     socket.onopen = () => {
@@ -270,8 +276,21 @@ const TerminalComponent = () => {
       // 연결 성공 메시지는 터미널에 표시하지 않고 콘솔에만 출력
       // 서버가 자동으로 프롬프트를 보내거나, 사용자가 명령어를 입력하면 서버가 응답함
 
-      // API를 통해 초기 데이터 로드
-      refreshResourceData();
+      // 연결 후 자동으로 kubectl 명령어 실행하여 리소스 가져오기
+      // 약간의 지연 후 명령어 실행 (터미널이 준비될 시간 확보)
+      setTimeout(() => {
+        if (socket.readyState === WebSocket.OPEN) {
+          console.log("🔄 자동으로 리소스 정보 가져오기...");
+          // kubectl get nodes 실행
+          socket.send("kubectl get nodes\n");
+          // 잠시 후 kubectl get pods 실행
+          setTimeout(() => {
+            if (socket.readyState === WebSocket.OPEN) {
+              socket.send("kubectl get pods\n");
+            }
+          }, 500);
+        }
+      }, 1000);
     };
 
     socket.onclose = (event) => {
@@ -307,11 +326,20 @@ const TerminalComponent = () => {
           event.data.text().then((text) => {
             console.log("서버 메시지 (Blob):", text.substring(0, 100)); // 디버깅용
             term.write(text);
-            setTerminalOutput((prev) => {
-              const updated = prev + text;
-              processKubectlOutput(updated);
-              return updated;
-            });
+
+            // 터미널 출력을 ref에 누적
+            terminalOutputRef.current = terminalOutputRef.current + text;
+
+            // 디바운싱: 출력이 멈춘 후 500ms 후에 파싱 실행
+            if (parseTimeoutRef.current) {
+              clearTimeout(parseTimeoutRef.current);
+            }
+            parseTimeoutRef.current = setTimeout(() => {
+              console.log("🔄 터미널 출력 파싱 시작 (디바운싱 후, Blob)");
+              processKubectlOutput(terminalOutputRef.current);
+            }, 500);
+
+            setTerminalOutput((prev) => prev + text);
           });
           return;
         } else {
@@ -329,63 +357,170 @@ const TerminalComponent = () => {
         // 터미널에 데이터 출력 (서버가 보낸 모든 메시지를 그대로 표시)
         term.write(data);
 
-        setTerminalOutput((prev) => {
-          const updated = prev + data;
-          processKubectlOutput(updated);
+        // 터미널 출력을 ref에 누적
+        terminalOutputRef.current = terminalOutputRef.current + data;
 
-          return updated;
-        });
+        // 디바운싱: 출력이 멈춘 후 500ms 후에 파싱 실행
+        if (parseTimeoutRef.current) {
+          clearTimeout(parseTimeoutRef.current);
+        }
+        parseTimeoutRef.current = setTimeout(() => {
+          console.log("🔄 터미널 출력 파싱 시작 (디바운싱 후)");
+          processKubectlOutput(terminalOutputRef.current);
+        }, 500);
+
+        setTerminalOutput((prev) => prev + data);
       } catch (error) {
         console.error("터미널 메시지 처리 오류:", error);
       }
     };
 
+    // ANSI 코드 제거 함수
+    const stripAnsi = (str: string): string => {
+      return str.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, "");
+    };
+
     // kubectl 출력 파싱 헬퍼 함수
     const processKubectlOutput = (output: string) => {
-      // kubectl get nodes 명령어 파싱
-      if (output.includes("kubectl get nodes") && output.includes("NAME")) {
-        const lines = output.split("\n");
-        const nodeStartIndex = lines.findIndex(
-          (line) => line.includes("NAME") && line.includes("STATUS")
-        );
-        if (nodeStartIndex !== -1) {
-          const nodeLines = lines
-            .slice(nodeStartIndex + 1)
-            .filter(
-              (line) =>
-                line.trim() && !line.includes("kubectl") && !line.includes("$")
-            );
-          if (nodeLines.length > 0) {
-            const parsed = parseKubectlGetNodes(nodeLines.join("\n"));
-            if (parsed && parsed.length > 0) {
-              setParsedNodes(parsed);
-            }
-          }
-        }
-        setTimeout(() => refreshResourceData(), 1000);
+      if (!output || output.length === 0) {
+        return;
       }
 
-      // kubectl get pods 명령어 파싱
-      if (output.includes("kubectl get pods") && output.includes("NAME")) {
-        const lines = output.split("\n");
-        const podStartIndex = lines.findIndex(
-          (line) => line.includes("NAME") && line.includes("READY")
-        );
-        if (podStartIndex !== -1) {
-          const podLines = lines
-            .slice(podStartIndex + 1)
-            .filter(
-              (line) =>
-                line.trim() && !line.includes("kubectl") && !line.includes("$")
-            );
-          if (podLines.length > 0) {
-            const parsed = parseKubectlGetPods(podLines.join("\n"));
-            if (parsed && parsed.length > 0) {
-              setParsedPods(parsed);
-            }
+      // ANSI 코드 제거
+      const cleanOutput = stripAnsi(output);
+      const lines = cleanOutput.split("\n").map((line) => line.trim());
+      const totalLines = lines.length;
+
+      console.log(
+        `🔍 전체 출력 라인 수: ${totalLines}, 최근 10줄:`,
+        lines.slice(-10)
+      );
+
+      // 최근 출력 부분만 확인 (마지막 300줄)
+      const startIndex = Math.max(0, totalLines - 300);
+      const recentLines = lines.slice(startIndex);
+
+      // 노드 테이블 찾기: ROLES 컬럼이 있는 테이블
+      let nodeHeaderIndex = -1;
+      for (let i = recentLines.length - 1; i >= 0; i--) {
+        const line = recentLines[i];
+        if (
+          line.includes("NAME") &&
+          line.includes("STATUS") &&
+          (line.includes("ROLES") || line.includes("ROLE"))
+        ) {
+          nodeHeaderIndex = i;
+          break;
+        }
+      }
+
+      if (nodeHeaderIndex !== -1) {
+        console.log("✅ 노드 테이블 헤더 발견:", recentLines[nodeHeaderIndex]);
+        const absoluteNodeHeaderIndex = startIndex + nodeHeaderIndex;
+        const nodeDataLines: string[] = [];
+
+        // 노드 테이블 데이터 추출
+        for (let i = absoluteNodeHeaderIndex + 1; i < totalLines; i++) {
+          const line = lines[i];
+          if (!line) {
+            // 빈 줄이면 중단
+            break;
+          }
+
+          // 다음 테이블 헤더나 프롬프트 확인
+          if (
+            (line.includes("NAME") &&
+              line.includes("READY") &&
+              !line.includes("ROLES")) ||
+            line.includes("root@") ||
+            (line.includes("kubectl") && line.length < 100)
+          ) {
+            break;
+          }
+
+          // 데이터 라인 확인 (최소 3개 컬럼)
+          const parts = line.split(/\s+/).filter((p) => p.length > 0);
+          if (parts.length >= 3) {
+            nodeDataLines.push(line);
           }
         }
-        setTimeout(() => refreshResourceData(), 1000);
+
+        console.log(`📊 노드 데이터 라인 수: ${nodeDataLines.length}`);
+        if (nodeDataLines.length > 0) {
+          // 헤더와 데이터를 함께 전달
+          const headerLine = recentLines[nodeHeaderIndex];
+          const dataToParse = headerLine + "\n" + nodeDataLines.join("\n");
+          console.log("📝 노드 파싱할 데이터:", dataToParse.substring(0, 200));
+          const parsed = parseKubectlGetNodes(dataToParse);
+          if (parsed && parsed.length > 0) {
+            console.log("✅ 노드 데이터 파싱 성공:", parsed);
+            setParsedNodes(parsed);
+          } else {
+            console.warn("⚠️ 노드 파싱 실패");
+          }
+        }
+      }
+
+      // 파드 테이블 찾기: READY 컬럼이 있고 ROLES가 없는 테이블
+      let podHeaderIndex = -1;
+      for (let i = recentLines.length - 1; i >= 0; i--) {
+        const line = recentLines[i];
+        if (
+          line.includes("NAME") &&
+          line.includes("READY") &&
+          line.includes("STATUS") &&
+          !line.includes("ROLES")
+        ) {
+          podHeaderIndex = i;
+          break;
+        }
+      }
+
+      if (podHeaderIndex !== -1) {
+        console.log("✅ 파드 테이블 헤더 발견:", recentLines[podHeaderIndex]);
+        const absolutePodHeaderIndex = startIndex + podHeaderIndex;
+        const podDataLines: string[] = [];
+
+        // 파드 테이블 데이터 추출
+        for (let i = absolutePodHeaderIndex + 1; i < totalLines; i++) {
+          const line = lines[i];
+          if (!line) {
+            // 빈 줄이면 중단
+            break;
+          }
+
+          // 다음 테이블 헤더나 프롬프트 확인
+          if (
+            (line.includes("NAME") && line.includes("ROLES")) ||
+            line.includes("root@") ||
+            (line.includes("kubectl") && line.length < 100)
+          ) {
+            break;
+          }
+
+          // 데이터 라인 확인 (최소 3개 컬럼)
+          const parts = line.split(/\s+/).filter((p) => p.length > 0);
+          if (parts.length >= 3) {
+            podDataLines.push(line);
+          }
+        }
+
+        console.log(`📊 파드 데이터 라인 수: ${podDataLines.length}`);
+        if (podDataLines.length > 0) {
+          // 헤더와 데이터를 함께 전달
+          const headerLine = recentLines[podHeaderIndex];
+          const dataToParse = headerLine + "\n" + podDataLines.join("\n");
+          console.log("📝 파드 파싱할 데이터:", dataToParse.substring(0, 200));
+          const parsed = parseKubectlGetPods(dataToParse);
+          if (parsed && parsed.length > 0) {
+            console.log("✅ 파드 데이터 파싱 성공:", parsed);
+            setParsedPods(parsed);
+          } else {
+            console.warn("⚠️ 파드 파싱 실패");
+          }
+        }
+      } else {
+        console.log("🔍 파드 테이블 헤더를 찾지 못함");
       }
     };
 
@@ -413,9 +548,13 @@ const TerminalComponent = () => {
     return () => {
       window.removeEventListener("load", initTerminal);
       window.removeEventListener("resize", handleResize);
+      if (parseTimeoutRef.current) {
+        clearTimeout(parseTimeoutRef.current);
+      }
       if (socket.readyState === WebSocket.OPEN) {
         socket.close();
       }
+      socketRef.current = null;
     };
   }, []);
 

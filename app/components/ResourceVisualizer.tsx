@@ -31,7 +31,16 @@ export const ResourceVisualizer: React.FC<ResourceVisualizerProps> = ({
   onRefresh,
 }) => {
   const [is3DView, setIs3DView] = useState(false);
-  if (!nodes && !pods) {
+
+  // 디버깅: 리소스 상태 확인
+  console.log("🔍 ResourceVisualizer 렌더링:", {
+    nodes: nodes?.length || 0,
+    pods: pods?.length || 0,
+    nodesData: nodes,
+    podsData: pods,
+  });
+
+  if ((!nodes || nodes.length === 0) && (!pods || pods.length === 0)) {
     return (
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 h-full flex flex-col">
         <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex items-center justify-between">

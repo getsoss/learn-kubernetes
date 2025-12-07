@@ -70,3 +70,4 @@ const TerminalComponentWithDB = () => {
   // ... 나머지 컴포넌트 코드 ...
 };
 
+

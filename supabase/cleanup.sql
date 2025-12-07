@@ -5,3 +5,4 @@ DROP TABLE IF EXISTS user_problem_attempts CASCADE;
 DROP TABLE IF EXISTS user_problem_results CASCADE;
 DROP FUNCTION IF EXISTS update_updated_at_column() CASCADE;
 
+
