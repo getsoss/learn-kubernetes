@@ -12,4 +12,5 @@ export interface ParsedNode {
   roles: string;
   age: string;
   version: string;
+  labels?: string;
 }

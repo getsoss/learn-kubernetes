@@ -148,7 +148,7 @@ const TerminalComponent = () => {
 
     console.log("🔄 리소스 데이터 새로고침 중...");
     // kubectl get nodes 실행
-    socket.send("kubectl get nodes\n");
+    socket.send("kubectl get nodes --show-labels\n");
     // 잠시 후 kubectl get pods 실행
     setTimeout(() => {
       if (socket.readyState === WebSocket.OPEN) {

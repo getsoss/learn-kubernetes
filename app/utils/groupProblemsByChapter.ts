@@ -28,7 +28,7 @@ function extractChapterInfo(problemId: string): {
 function getChapterName(track: string, step: string): string {
   const trackNames: Record<string, string> = {
     "1": "Track 1. 쿠버네티스 기초 입문",
-    "2": "Track 2. 워크로드 관리",
+    "2": "Track 2. 쿠버네티스 기초 개념",
     "3": "Track 3. 네트워킹 & 서비스 연결",
     "4": "Track 4. 스토리지 & 설정 관리",
     "5": "Track 5. 고급 운영 실습",
@@ -36,14 +36,14 @@ function getChapterName(track: string, step: string): string {
 
   const stepNames: Record<string, Record<string, string>> = {
     "1": {
-      "1": "컨테이너와 Pod 개념",
+      "1": "Pod 개념",
       "2": "kubectl 기초",
       "3": "Pod 생성/확인",
       "4": "로그/디버깅",
       "5": "정리/퀴즈",
     },
     "2": {
-      "1": "Deployment 개념",
+      "1": "Node 기초",
       "2": "배포/스케일링",
       "3": "롤링 업데이트",
       "4": "롤백 전략",
@@ -137,4 +137,3 @@ export function groupProblemsByChapter(problems: Problem[]): ChapterGroup[] {
 
   return chapters;
 }
-

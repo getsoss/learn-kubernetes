@@ -1,8 +1,27 @@
 import { ParsedNode } from "../types/kubectl";
 
+const columnSeparator = /\s{2,}|\t+/;
+
 function stripAnsi(str: string): string {
   // ANSI escape sequences 제거
   return str.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, "");
+}
+
+function splitColumns(line: string): string[] {
+  if (!line) {
+    return [];
+  }
+  const columns = line
+    .split(columnSeparator)
+    .map((col) => col.trim())
+    .filter((col) => col.length > 0);
+  if (columns.length <= 1) {
+    return line
+      .split(/\s+/)
+      .map((col) => col.trim())
+      .filter((col) => col.length > 0);
+  }
+  return columns;
 }
 
 export function parseKubectlGetNodes(output: string): ParsedNode[] | null {
@@ -28,6 +47,27 @@ export function parseKubectlGetNodes(output: string): ParsedNode[] | null {
       return null;
     }
 
+    const headerColumns = splitColumns(lines[headerIndex]);
+    const normalizedHeaders = headerColumns.map((col) => col.toUpperCase());
+    const getColumnIndex = (...candidates: string[]): number => {
+      for (const candidate of candidates) {
+        const idx = normalizedHeaders.findIndex(
+          (header) => header === candidate.toUpperCase()
+        );
+        if (idx !== -1) {
+          return idx;
+        }
+      }
+      return -1;
+    };
+
+    const nameIndex = getColumnIndex("NAME");
+    const statusIndex = getColumnIndex("STATUS");
+    const rolesIndex = getColumnIndex("ROLES", "ROLE");
+    const ageIndex = getColumnIndex("AGE");
+    const versionIndex = getColumnIndex("VERSION");
+    const labelIndex = getColumnIndex("LABELS");
+
     const dataLines: string[] = [];
 
     for (let i = headerIndex + 1; i < lines.length; i++) {
@@ -48,7 +88,7 @@ export function parseKubectlGetNodes(output: string): ParsedNode[] | null {
       }
 
       // 실제 데이터 라인인지 확인 (최소 3개 컬럼이 있어야 함)
-      const parts = line.split(/\s+/);
+      const parts = splitColumns(line);
       if (parts.length >= 3) {
         dataLines.push(line);
       }
@@ -60,13 +100,23 @@ export function parseKubectlGetNodes(output: string): ParsedNode[] | null {
     }
 
     const parsed = dataLines.map((line) => {
-      const parts = line.trim().split(/\s+/);
+      const columns = splitColumns(line);
+      const getValue = (index: number, fallback = "") =>
+        index >= 0 && index < columns.length ? columns[index] ?? fallback : fallback;
+      const name = getValue(nameIndex, columns[0] ?? "");
+      const status = getValue(statusIndex, columns[1] ?? "");
+      const roles = getValue(rolesIndex, columns[2] ?? "");
+      const age = getValue(ageIndex, columns[3] ?? "");
+      const version = getValue(versionIndex, columns[4] ?? "");
+      const labelsValue = labelIndex >= 0 ? getValue(labelIndex) : "";
+      const labels = labelsValue || undefined;
       return {
-        name: parts[0] || "",
-        status: parts[1] || "",
-        roles: parts[2] || "",
-        age: parts[3] || "",
-        version: parts[4] || "",
+        name,
+        status,
+        roles,
+        age,
+        version,
+        labels,
       };
     });
 

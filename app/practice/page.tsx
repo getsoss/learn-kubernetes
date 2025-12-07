@@ -12,7 +12,7 @@ const tracks = [
   },
   {
     id: "track-2",
-    title: "Track 2. 워크로드 관리",
+    title: "Track 2. 쿠버네티스 기초 개념 - Node 기초",
     subtitle: "배포/확장/롤백 경험",
     goal: "Deployment로 애플리케이션을 배포하고 업데이트할 수 있다.",
   },
